@@ -1,22 +1,19 @@
-﻿using PaycBillingWorker.Models;
-using PaycBillingWorker.Models.DTO;
+﻿using PaycBillingWorker.Models.DTO;
 using Newtonsoft.Json;
 using PaycBillingWorker.Interfaces;
 using System.Net;
 using System.Text;
 using static PaycBillingWorker.Utility.SD;
 
-
 namespace PaycBillingWorker.Services
 {
     public class BaseService : IBaseService
     {
         private readonly IHttpClientFactory _httpClientFactory;
-        //private readonly ITokenProvider _tokenProvider;
-        public BaseService(IHttpClientFactory httpClientFactory/*, ITokenProvider tokenProvider*/)
+
+        public BaseService(IHttpClientFactory httpClientFactory)
         {
             _httpClientFactory = httpClientFactory;
-            //_tokenProvider = tokenProvider;
         }
 
         public async Task<ResponseDTO?> SendAsync(RequestDTO requestDto, bool withBearer = true)
@@ -25,6 +22,8 @@ namespace PaycBillingWorker.Services
             {
                 HttpClient client = _httpClientFactory.CreateClient("PaycBillingWorkerAPI");
                 HttpRequestMessage message = new();
+
+                // 1. Set Accept Headers
                 if (requestDto.ContentType == ContentType.MultipartFormData)
                 {
                     message.Headers.Add("Accept", "*/*");
@@ -33,7 +32,8 @@ namespace PaycBillingWorker.Services
                 {
                     message.Headers.Add("Accept", "application/json");
                 }
-                //token
+
+                // 2. Add Authorization
                 if (withBearer)
                 {
                     var token = PaycBillingWorker.Utility.SD.Token;
@@ -42,20 +42,16 @@ namespace PaycBillingWorker.Services
 
                 message.RequestUri = new Uri(requestDto.Url);
 
+                // 3. Serialize Payload (Data)
                 if (requestDto.ContentType == ContentType.MultipartFormData)
                 {
                     var content = new MultipartFormDataContent();
-
                     foreach (var prop in requestDto.Data.GetType().GetProperties())
                     {
                         var value = prop.GetValue(requestDto.Data);
-                        if (value is FormFile)
+                        if (value is Microsoft.AspNetCore.Http.IFormFile file && file != null)
                         {
-                            var file = (FormFile)value;
-                            if (file != null)
-                            {
-                                content.Add(new StreamContent(file.OpenReadStream()), prop.Name, file.FileName);
-                            }
+                            content.Add(new StreamContent(file.OpenReadStream()), prop.Name, file.FileName);
                         }
                         else
                         {
@@ -68,71 +64,77 @@ namespace PaycBillingWorker.Services
                 {
                     if (requestDto.Data != null)
                     {
-                        message.Content = new StringContent(JsonConvert.SerializeObject(requestDto.Data), Encoding.UTF8, "application/json");
+                        // JSON Serialization
+                        message.Content = new StringContent(
+                            JsonConvert.SerializeObject(requestDto.Data),
+                            Encoding.UTF8,
+                            "application/json");
                     }
                 }
 
-                HttpResponseMessage? apiResponse = null;
-
-                if (requestDto.ApiType == ApiType.POST)
+                // 4. Set Method
+                switch (requestDto.ApiType)
                 {
-                    message.Method = HttpMethod.Post;
-                }
-                else if (requestDto.ApiType == ApiType.DELETE)
-                {
-                    message.Method = HttpMethod.Delete;
-                }
-                else if (requestDto.ApiType == ApiType.PUT)
-                {
-                    message.Method = HttpMethod.Put;
-                }
-                else
-                {
-                    message.Method = HttpMethod.Get;
+                    case ApiType.POST: message.Method = HttpMethod.Post; break;
+                    case ApiType.DELETE: message.Method = HttpMethod.Delete; break;
+                    case ApiType.PUT: message.Method = HttpMethod.Put; break;
+                    default: message.Method = HttpMethod.Get; break;
                 }
 
-                apiResponse = await client.SendAsync(message);
+                // 5. Send Request
+                var apiResponse = await client.SendAsync(message);
 
-                if (apiResponse.StatusCode == HttpStatusCode.NotFound)
+                // 6. Handle Errors (Specifically 400 Bad Request for validation messages)
+                if (!apiResponse.IsSuccessStatusCode)
                 {
-                    return new() { IsSuccess = false, Message = "Not Found" };
-                }
-                else if (apiResponse.StatusCode == HttpStatusCode.Forbidden)
-                {
-                    return new() { IsSuccess = false, Message = "Access Denied" };
-                }
-                else if (apiResponse.StatusCode == HttpStatusCode.Unauthorized)
-                {
-                    return new() { IsSuccess = false, Message = "Unauthorized" };
-                }
-                else if (apiResponse.StatusCode == HttpStatusCode.InternalServerError)
-                {
-                    return new() { IsSuccess = false, Message = "Internal Server Error" };
-                }
-                else
-                {
+                    var errorContent = await apiResponse.Content.ReadAsStringAsync();
+                    var failResponse = new ResponseDTO { IsSuccess = false };
 
-                    var apiContent = await apiResponse.Content.ReadAsStringAsync();
-                    List<Object> meterReadings = JsonConvert.DeserializeObject<List<Object>>(apiContent);
-
-                    ResponseDTO responseDto = new ResponseDTO
+                    switch (apiResponse.StatusCode)
                     {
-                        Result = meterReadings,
-                        IsSuccess = true,
-                        Message = "Data successfully deserialized"
-                    };
-                    return responseDto;
+                        case HttpStatusCode.BadRequest:
+                            // Capture the specific validation error from the API
+                            failResponse.Message = $"Bad Request: {errorContent}";
+                            break;
+                        case HttpStatusCode.NotFound:
+                            failResponse.Message = "Not Found";
+                            break;
+                        case HttpStatusCode.Forbidden:
+                            failResponse.Message = "Access Denied";
+                            break;
+                        case HttpStatusCode.Unauthorized:
+                            failResponse.Message = "Unauthorized";
+                            break;
+                        case HttpStatusCode.InternalServerError:
+                            failResponse.Message = $"Internal Server Error: {errorContent}";
+                            break;
+                        default:
+                            failResponse.Message = $"Error {apiResponse.StatusCode}: {errorContent}";
+                            break;
+                    }
+                    return failResponse;
                 }
 
+                // 7. Success Block
+                var apiContent = await apiResponse.Content.ReadAsStringAsync();
+
+                // Deserialize as generic object to handle different response types
+                var resultData = JsonConvert.DeserializeObject<object>(apiContent);
+
+                return new ResponseDTO
+                {
+                    Result = resultData,
+                    IsSuccess = true,
+                    Message = "Success"
+                };
             }
             catch (Exception ex)
             {
-                var dto = new ResponseDTO
+                return new ResponseDTO
                 {
-                    Message = ex.Message.ToString(),
+                    Message = $"Exception: {ex.Message}",
                     IsSuccess = false
                 };
-                return dto;
             }
         }
     }

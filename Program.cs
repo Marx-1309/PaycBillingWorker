@@ -1,5 +1,6 @@
 using Microsoft.OpenApi;
-using Microsoft.OpenApi;
+using Microsoft.OpenApi.Models; // This requires Swashbuckle.AspNetCore package
+using PaycBillingWorker.Interfaces;
 using PaycBillingWorker.Services;
 
 namespace PaycBillingWorker
@@ -13,38 +14,41 @@ namespace PaycBillingWorker
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Host.CreateDefaultBuilder(args)
-                // Switch to ConfigureWebHostDefaults to support Controllers & Swagger
                 .ConfigureWebHostDefaults(webBuilder =>
                 {
                     webBuilder.ConfigureServices(services =>
                     {
-                        // 1. Add API Controllers
                         services.AddControllers();
-                        // 3. Register your Background Worker and Services
+                        services.AddEndpointsApiExplorer();
+
+                        // This block uses OpenApiInfo from Microsoft.OpenApi.Models
+                        services.AddSwaggerGen(c =>
+                        {
+                            c.SwaggerDoc("v1", new OpenApiInfo { Title = "PayC Billing API", Version = "v1" });
+                        });
+
                         services.AddHttpContextAccessor();
                         services.AddHttpClient();
-                        services.AddScoped</*IBaseService, */BaseService>();
-                        services.AddHostedService<PostInvoiceWorker>();
+
+                        // Register Services
+                        services.AddScoped<IBaseService, BaseService>();
+                        //services.AddHostedService<PostInvoiceWorker>();
                         services.AddHttpClient<IInvoiceService, InvoiceService>();
+                        services.AddScoped<IMeterReadingService, MeterReadingService>();
+                        services.AddScoped<IConsumerService, ConsumerService>();
                     });
 
-                    // 4. Configure the HTTP Pipeline (Middleware)
                     webBuilder.Configure(app =>
                     {
                         var env = app.ApplicationServices.GetRequiredService<IWebHostEnvironment>();
 
-                        // Enable Swagger UI in Development (or always, if you prefer)
                         if (env.IsDevelopment())
                         {
                             app.UseSwagger();
-                            app.UseSwaggerUI();
+                            app.UseSwaggerUI(); // Defaults to /swagger/v1/swagger.json
                         }
 
                         app.UseRouting();
-
-                        //app.UseAuthentication();
-                        //app.UseAuthorization();
-
                         app.UseEndpoints(endpoints =>
                         {
                             endpoints.MapControllers();

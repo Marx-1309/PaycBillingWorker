@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json; 
 
 namespace PaycBillingWorker.Models
 {
-    // Represents a single row from the SQL View
+    // DB Row Model
     public class InvoiceSourceRow
     {
         public string ReferenceKey { get; set; }
@@ -22,8 +22,6 @@ namespace PaycBillingWorker.Models
         public DateTime PayByDate { get; set; }
         public string Comment { get; set; }
         public string SpecialComment { get; set; }
-
-        // Line Item columns
         public string SerialNo { get; set; }
         public string Description { get; set; }
         public decimal UnitRate { get; set; }
@@ -33,79 +31,79 @@ namespace PaycBillingWorker.Models
         public decimal Amount { get; set; }
     }
 
-    // API Payload - Properties match the JSON casing required by your API docs
+    // API Payload Model
     public class InvoicePayload
     {
-        [JsonPropertyName("reference_key")]
+        [JsonProperty("reference_key")]
         public string ReferenceKey { get; set; }
 
-        [JsonPropertyName("reference_type")]
+        [JsonProperty("reference_type")]
         public string ReferenceType { get; set; }
 
-        [JsonPropertyName("invoice_no")]
+        [JsonProperty("invoice_no")]
         public string InvoiceNo { get; set; }
 
-        [JsonPropertyName("invoice_date")]
+        [JsonProperty("invoice_date")]
         public string InvoiceDate { get; set; }
 
-        [JsonPropertyName("invoice_from_date")]
+        [JsonProperty("invoice_from_date")]
         public string InvoiceFromDate { get; set; }
 
-        [JsonPropertyName("invoice_to_date")]
+        [JsonProperty("invoice_to_date")]
         public string InvoiceToDate { get; set; }
 
-        [JsonPropertyName("opening_reading")]
+        [JsonProperty("opening_reading")]
         public decimal? OpeningReading { get; set; }
 
-        [JsonPropertyName("closing_reading")]
+        [JsonProperty("closing_reading")]
         public decimal? ClosingReading { get; set; }
 
-        [JsonPropertyName("opening_balance")]
+        [JsonProperty("opening_balance")]
         public decimal OpeningBalance { get; set; }
 
-        [JsonPropertyName("this_period_charges")]
+        [JsonProperty("this_period_charges")]
         public decimal ThisPeriodCharges { get; set; }
 
-        [JsonPropertyName("total_payable")]
+        [JsonProperty("total_payable")]
         public decimal TotalPayable { get; set; }
 
-        [JsonPropertyName("minimum_payable")]
+        [JsonProperty("minimum_payable")]
         public decimal MinimumPayable { get; set; }
 
-        [JsonPropertyName("pay_by_date")]
+        [JsonProperty("pay_by_date")]
         public string PayByDate { get; set; }
 
-        [JsonPropertyName("comment")]
-        public string Comment { get; set; }
+        [JsonProperty("comment")]
+        public string Comment { get; set; } = string.Empty;
 
-        [JsonPropertyName("special_comment")]
-        public string SpecialComment { get; set; }
+        [JsonProperty("special_comment")]
+        public string SpecialComment { get; set; } = string.Empty;
 
-        [JsonPropertyName("line_items")]
-        public List<InvoiceLineItem> LineItems { get; set; } = new List<InvoiceLineItem>();
+        [JsonProperty("line_items")]
+        public List<InvoiceLineItem> LineItems { get; set; } = new();
     }
 
     public class InvoiceLineItem
     {
-        [JsonPropertyName("serial_no")]
+        [JsonProperty("serial_no")]
         public string SerialNo { get; set; }
 
-        [JsonPropertyName("description")]
+        [JsonProperty("description")]
         public string Description { get; set; }
 
-        [JsonPropertyName("unit_rate")]
+        [JsonProperty("unit_rate")]
         public decimal UnitRate { get; set; }
 
-        [JsonPropertyName("quantity")]
+        [JsonProperty("quantity")]
         public decimal Quantity { get; set; }
 
-        [JsonPropertyName("nett")]
+        [JsonProperty("nett")]
         public decimal Nett { get; set; }
 
-        [JsonPropertyName("vat")]
+        [JsonProperty("vat")]
         public decimal Vat { get; set; }
 
-        [JsonPropertyName("amount")]
+        [JsonProperty("amount")]
         public decimal Amount { get; set; }
     }
 }
