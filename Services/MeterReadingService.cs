@@ -1,5 +1,6 @@
-﻿using PaycBillingWorker.Models.DTO;
-using PaycBillingWorker.Interfaces;
+﻿using PaycBillingWorker.Interfaces;
+using PaycBillingWorker.Models.DTO;
+using static PaycBillingWorker.Utility.SD;
 
 namespace PaycBillingWorker.Services
 {
@@ -14,27 +15,26 @@ namespace PaycBillingWorker.Services
             _config = config;
         }
 
-        public async Task<ResponseDTO> GetReadingsBySerialAsync(string serialNumber, int page, int pageSize)
+        public async Task<ResponseDTO<MeterReadingApiResponse>> GetReadingsBySerialAsync(
+            string serialNumber, int page, int pageSize)
         {
-            // 1. Get Base URL (Use the one from your prompt if not in appsettings)
-            // Defaulting to the one provided in your prompt if config is missing
             var baseUrl = _config["ApiSettings:BaseUrl"] ?? "https://server.watermeter.payc.online";
 
-            // 2. Construct Endpoint path
-            // Documentation Endpoint: /api/v1/mqttmeterReading/ByMeterSerialNumber/:id
             var endpoint = $"/api/v1/mqttmeterReading/ByMeterSerialNumber/{serialNumber}";
 
-            // 3. Add Query Parameters (page, pageSize)
+            // FIXED casing → pageSize
             var fullUrl = $"{baseUrl}{endpoint}?page={page}&pageSize={pageSize}";
 
-            // 4. Send Request via BaseService
-            return await _baseService.SendAsync(new RequestDTO
+            return await _baseService.SendAsync<MeterReadingApiResponse>(new RequestDTO
             {
                 Url = fullUrl,
-                Data = null, // GET request has no body
-                ApiType = Utility.SD.ApiType.GET,
-                ContentType = Utility.SD.ContentType.Json
+                ApiType = ApiType.GET
             });
         }
+
     }
 }
+
+
+//https://server.watermeter.payc.online/api/v1/mqttmeterReading/ByMeterSerialNumber/14503898?page=1&pagesize=10
+//https://server.watermeter.payc.online/api/v1/mqttmeterReading/ByMeterSerialNumber/14503898?page=1&pageSize=10

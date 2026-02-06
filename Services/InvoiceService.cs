@@ -224,7 +224,7 @@ namespace PaycBillingWorker.Services
                 var baseUrl = _config["ApiSettings:BaseUrl"];
                 var endpoint = _config["ApiSettings:InvoiceEndpoint"];
 
-                var response = await _baseService.SendAsync(new RequestDTO
+                var response = await _baseService.SendAsync<ApiMessageResponse>(new RequestDTO
                 {
                     Url = baseUrl + endpoint,
                     Data = payload,

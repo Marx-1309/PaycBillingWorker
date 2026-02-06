@@ -32,4 +32,10 @@ namespace PaycBillingWorker.Models
         [JsonProperty("timestamp")]
         public DateTime Timestamp { get; set; }
     }
+    public class MeterReadingApiResponse
+    {
+        public string Message { get; set; }
+        public List<MeterReadingItem> MeterReading { get; set; }
+    }
+
 }

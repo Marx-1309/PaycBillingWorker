@@ -21,21 +21,17 @@ namespace PaycBillingWorker.Controllers
         {
             if (string.IsNullOrEmpty(serialNumber))
             {
-                return BadRequest(new ResponseDTO
-                {
-                    IsSuccess = false,
-                    Message = "Serial Number is required"
-                });
+                return BadRequest(new { message = "Serial Number is required" });
             }
 
             var response = await _meterReadingService.GetReadingsBySerialAsync(serialNumber, page, pageSize);
 
             if (response != null && response.IsSuccess)
             {
-                return Ok(response);
+                return Ok(response.Result);
             }
 
-            return StatusCode(400, response);
+            return BadRequest(new { message = response?.Message });
         }
     }
 }

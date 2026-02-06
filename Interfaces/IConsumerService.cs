@@ -1,11 +1,11 @@
-﻿using PaycBillingWorker.Models;
-using PaycBillingWorker.Models.DTO;
+﻿using PaycBillingWorker.Models.DTO;
+using PaycBillingWorker.Models;
 
-namespace PaycBillingWorker.Services
+namespace PaycBillingWorker.Interfaces
 {
     public interface IConsumerService
     {
-        Task<ResponseDTO> PostNewConsumerAsync(ConsumerPayload payload);
-        Task<ResponseDTO> UpdateConsumerAsync(ConsumerPayload payload);
+        Task<ResponseDTO<ApiMessageResponse>> PostNewConsumerAsync(ConsumerPayload payload);
+        Task<ResponseDTO<ApiMessageResponse>> UpdateConsumerAsync(ConsumerPayload payload);
     }
 }

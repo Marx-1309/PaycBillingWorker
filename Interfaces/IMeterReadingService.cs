@@ -9,6 +9,7 @@ namespace PaycBillingWorker.Interfaces
 {
     public interface IMeterReadingService
     {
-        Task<ResponseDTO> GetReadingsBySerialAsync(string serialNumber, int page, int pageSize);
+        Task<ResponseDTO<MeterReadingApiResponse>> GetReadingsBySerialAsync(
+            string serialNumber, int page, int pageSize);
     }
 }

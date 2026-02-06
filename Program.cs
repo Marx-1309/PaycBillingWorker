@@ -32,7 +32,7 @@ namespace PaycBillingWorker
 
                         // Register Services
                         services.AddScoped<IBaseService, BaseService>();
-                        //services.AddHostedService<PostInvoiceWorker>();
+                        services.AddHostedService<PostInvoiceWorker>();
                         services.AddHttpClient<IInvoiceService, InvoiceService>();
                         services.AddScoped<IMeterReadingService, MeterReadingService>();
                         services.AddScoped<IConsumerService, ConsumerService>();
@@ -40,6 +40,7 @@ namespace PaycBillingWorker
 
                     webBuilder.Configure(app =>
                     {
+                        app.UseDeveloperExceptionPage();
                         var env = app.ApplicationServices.GetRequiredService<IWebHostEnvironment>();
 
                         if (env.IsDevelopment())

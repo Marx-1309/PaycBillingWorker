@@ -20,28 +20,20 @@ namespace PaycBillingWorker.Controllers
         [HttpPost("PostNewConsumer")]
         public async Task<IActionResult> PostNewConsumer([FromBody] ConsumerPayload payload)
         {
-            // Basic Validation based on "Required: Yes" fields in docs
             if (string.IsNullOrEmpty(payload.Name) ||
                 string.IsNullOrEmpty(payload.Email) ||
                 string.IsNullOrEmpty(payload.Phone) ||
                 string.IsNullOrEmpty(payload.AltContact))
             {
-                return BadRequest(new ResponseDTO
-                {
-                    IsSuccess = false,
-                    Message = "Name, Email, Phone, and AltContact are required fields."
-                });
+                return BadRequest(new { message = "Name, Email, Phone, and AltContact are required." });
             }
 
             var response = await _consumerService.PostNewConsumerAsync(payload);
 
-            if (response != null && response.IsSuccess)
-            {
-                return StatusCode(201, response); // 201 Created
-            }
+            if (response.IsSuccess)
+                return StatusCode(201, response.Result);
 
-            // Return 400 with the specific error message (e.g., Duplicate email)
-            return StatusCode(400, response);
+            return BadRequest(new { message = response.Message });
         }
 
         [HttpPut("UpdateConsumer")]

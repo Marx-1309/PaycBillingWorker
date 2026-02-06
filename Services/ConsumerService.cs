@@ -5,7 +5,6 @@ using static PaycBillingWorker.Utility.SD;
 
 namespace PaycBillingWorker.Services
 {
-
     public class ConsumerService : IConsumerService
     {
         private readonly IBaseService _baseService;
@@ -17,33 +16,31 @@ namespace PaycBillingWorker.Services
             _config = config;
         }
 
-        public async Task<ResponseDTO> PostNewConsumerAsync(ConsumerPayload payload)
+        public async Task<ResponseDTO<ApiMessageResponse>> PostNewConsumerAsync(ConsumerPayload payload)
         {
             var baseUrl = _config["ApiSettings:BaseUrl"];
-            // Defined in doc Section 3: /api/v1/consumer/post_new_consumer
             var endpoint = "/api/v1/consumer/post_new_consumer";
 
-            return await _baseService.SendAsync(new RequestDTO
+            return await _baseService.SendAsync<ApiMessageResponse>(new RequestDTO
             {
                 Url = baseUrl + endpoint,
                 Data = payload,
-                ApiType = Utility.SD.ApiType.POST,
-                ContentType = Utility.SD.ContentType.Json
+                ApiType = ApiType.POST,
+                ContentType = ContentType.Json
             });
         }
 
-        public async Task<ResponseDTO> UpdateConsumerAsync(ConsumerPayload payload)
+        public async Task<ResponseDTO<ApiMessageResponse>> UpdateConsumerAsync(ConsumerPayload payload)
         {
             var baseUrl = _config["ApiSettings:BaseUrl"];
-            // Defined in doc Section 4: Endpoint
             var endpoint = "/api/v1/consumer/update_consumer";
 
-            return await _baseService.SendAsync(new RequestDTO
+            return await _baseService.SendAsync<ApiMessageResponse>(new RequestDTO
             {
                 Url = baseUrl + endpoint,
                 Data = payload,
-                ApiType = Utility.SD.ApiType.PUT,
-                ContentType = Utility.SD.ContentType.Json
+                ApiType = ApiType.PUT,
+                ContentType = ContentType.Json
             });
         }
     }
