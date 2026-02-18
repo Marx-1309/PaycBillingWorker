@@ -24,7 +24,7 @@ namespace PaycBillingWorker.Models
     public class MeterMetadata
     {
         [JsonProperty("devEui")]
-        public string DevEui { get; set; }
+        public long DevEui { get; set; }
 
         [JsonProperty("reading")]
         public decimal Reading { get; set; }
@@ -32,10 +32,13 @@ namespace PaycBillingWorker.Models
         [JsonProperty("timestamp")]
         public DateTime Timestamp { get; set; }
     }
+
     public class MeterReadingApiResponse
     {
+        [JsonProperty("message")]
         public string Message { get; set; }
-        public List<MeterReadingItem> MeterReading { get; set; }
-    }
 
+        [JsonProperty("meterReading")]
+        public MeterReadingItem MeterReading { get; set; }
+    }
 }

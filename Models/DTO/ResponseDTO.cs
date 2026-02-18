@@ -10,7 +10,7 @@
     public class MeterReadingApiResponse
     {
         public string Message { get; set; }
-        public List<MeterReadingItem> MeterReading { get; set; }
+        public MeterReadingItem MeterReading { get; set; }
     }
 
     public class MeterReadingItem

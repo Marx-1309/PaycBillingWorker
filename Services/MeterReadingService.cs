@@ -31,7 +31,6 @@ namespace PaycBillingWorker.Services
                 ApiType = ApiType.GET
             });
         }
-
     }
 }
 
