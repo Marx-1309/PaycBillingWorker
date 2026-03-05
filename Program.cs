@@ -1,6 +1,8 @@
 using Microsoft.OpenApi.Models;
 using PaycBillingWorker.Interfaces;
+using PaycBillingWorker.Repositories;
 using PaycBillingWorker.Services;
+using PaycBillingWorker.Workers;
 
 namespace PaycBillingWorker
 {
@@ -32,10 +34,13 @@ namespace PaycBillingWorker
 
                         // Register Services
                         services.AddScoped<IBaseService, BaseService>();
-                        services.AddHostedService<PostInvoiceWorker>(); // Be careful with this in IIS (see notes below)
+
+                        services.AddHostedService<PostInvoiceWorker>();
+                        services.AddHostedService<UpdateMeterReadingWorker>();
                         services.AddHttpClient<IInvoiceService, InvoiceService>();
                         services.AddScoped<IMeterReadingService, MeterReadingService>();
                         services.AddScoped<IConsumerService, ConsumerService>();
+                        services.AddScoped<MeterReadingRepository>();
                     });
 
                     webBuilder.Configure(app =>

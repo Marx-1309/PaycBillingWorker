@@ -1,13 +1,14 @@
-﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using PaycBillingWorker.Interfaces;
 using PaycBillingWorker.Services;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace PaycBillingWorker
+namespace PaycBillingWorker.Workers
 {
     public class PostInvoiceWorker : BackgroundService
     {
@@ -25,7 +26,6 @@ namespace PaycBillingWorker
             _scopeFactory = scopeFactory;
             _config = config;
 
-            // 1. Initialize TimeZone (Same as reference worker)
             try
             {
                 _namibianTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Africa/Windhoek");
@@ -41,10 +41,9 @@ namespace PaycBillingWorker
         {
             _logger.LogInformation("PostInvoiceWorker Service started.");
 
-            // Optional: Keep your immediate run check for testing if needed
-            if (_config.GetValue<bool>("SchedulerSettings:RunOnStart"))
+            if (_config.GetValue<bool>("InvoiceSchedulerSettings:RunOnStart"))
             {
-                _logger.LogInformation("RunOnStart is TRUE. Executing job immediately...");
+                _logger.LogInformation("RunOnStart TRUE. Running invoice job immediately.");
                 await RunJobAsync();
             }
 
@@ -54,35 +53,29 @@ namespace PaycBillingWorker
                 int targetHour;
                 int targetMinute;
 
-                // 2. Get Config (Refreshable inside loop)
                 try
                 {
-                    targetDay = _config.GetValue<int>("SchedulerSettings:RunOnDayOfMonth");
-                    targetHour = _config.GetValue<int>("SchedulerSettings:RunAtHour");
-                    targetMinute = _config.GetValue<int>("SchedulerSettings:RunAtMinute");
-
-                    // Basic validation
-                    if (targetDay < 1 || targetDay > 31)
-                    {
-                        _logger.LogCritical("Invalid Configuration: 'RunOnDayOfMonth' must be between 1 and 31. Worker will retry in 1 hour.");
-                        await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
-                        continue;
-                    }
+                    targetDay = _config.GetValue<int>("InvoiceSchedulerSettings:RunOnDayOfMonth");
+                    targetHour = _config.GetValue<int>("InvoiceSchedulerSettings:RunAtHour");
+                    targetMinute = _config.GetValue<int>("InvoiceSchedulerSettings:RunAtMinute");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to read SchedulerSettings. Worker will retry in 1 hour.");
+                    _logger.LogError(ex, "Failed to read InvoiceSchedulerSettings. Retrying in 1 hour.");
                     await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
                     continue;
                 }
 
-                // 3. Calculate Delay for Monthly Run
-                TimeSpan delay = GetDelayUntilNextMonthlyRun(targetDay, targetHour, targetMinute);
+                TimeSpan delay = GetDelayUntilNextRun(targetDay, targetHour, targetMinute);
 
-                DateTime estimatedRunTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _namibianTimeZone).Add(delay);
-                _logger.LogInformation("*****Next Invoice run scheduled for {estimatedRunTime} Namibia time. Waiting for {delay}.*****", estimatedRunTime, delay);
+                DateTime estimatedRunTime =
+                    TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _namibianTimeZone)
+                    .Add(delay);
 
-                // 4. Wait
+                _logger.LogInformation(
+                    "*****Next Invoice posting scheduled for {estimatedRunTime} Namibia time. Waiting {delay}.*****",
+                    estimatedRunTime, delay);
+
                 try
                 {
                     await Task.Delay(delay, stoppingToken);
@@ -93,13 +86,13 @@ namespace PaycBillingWorker
                     break;
                 }
 
-                if (stoppingToken.IsCancellationRequested) break;
+                if (stoppingToken.IsCancellationRequested)
+                    break;
 
-                // 5. Run The Job
-                _logger.LogInformation("Running Invoice tasks at {time}", DateTimeOffset.Now);
+                _logger.LogInformation("Running invoice posting at {time}", DateTimeOffset.Now);
+
                 await RunJobAsync();
 
-                // Small buffer to prevent tight loop if calculation is slightly off
                 await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
             }
 
@@ -110,54 +103,36 @@ namespace PaycBillingWorker
         {
             try
             {
-                using (var scope = _scopeFactory.CreateScope())
-                {
-                    var invoiceService = scope.ServiceProvider.GetRequiredService<IInvoiceService>();
-                    await invoiceService.ProcessInvoicesAsync();
-                    _logger.LogInformation("*****Invoice tasks finished.*****");
-                }
+                using var scope = _scopeFactory.CreateScope();
+
+                var invoiceService = scope.ServiceProvider.GetRequiredService<IInvoiceService>();
+
+                await invoiceService.ProcessInvoicesAsync();
+
+                _logger.LogInformation("*****Invoice posting finished successfully.*****");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred during Invoice job execution.");
+                _logger.LogError(ex, "Error occurred during invoice posting job execution.");
             }
         }
 
-        private TimeSpan GetDelayUntilNextMonthlyRun(int targetDay, int targetHour, int targetMinute)
+        private TimeSpan GetDelayUntilNextRun(int targetDay, int targetHour, int targetMinute)
         {
-            // Get current time in Namibia
             var nowInNamibia = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _namibianTimeZone);
 
-            // Determine valid day for THIS month (e.g., if target is 31st but current month has 30 days)
-            int daysInCurrentMonth = DateTime.DaysInMonth(nowInNamibia.Year, nowInNamibia.Month);
-            int actualDayThisMonth = Math.Min(targetDay, daysInCurrentMonth);
-
-            // Construct the run time for THIS month
-            DateTime nextRunTime = new DateTime(
+            DateTime nextRun = new DateTime(
                 nowInNamibia.Year,
                 nowInNamibia.Month,
-                actualDayThisMonth,
+                targetDay,
                 targetHour,
                 targetMinute,
                 0);
 
-            // If the time has already passed for this month, move to NEXT month
-            if (nowInNamibia > nextRunTime)
-            {
-                var nextMonthDate = nowInNamibia.AddMonths(1);
-                int daysInNextMonth = DateTime.DaysInMonth(nextMonthDate.Year, nextMonthDate.Month);
-                int actualDayNextMonth = Math.Min(targetDay, daysInNextMonth);
+            if (nowInNamibia > nextRun)
+                nextRun = nextRun.AddMonths(1);
 
-                nextRunTime = new DateTime(
-                    nextMonthDate.Year,
-                    nextMonthDate.Month,
-                    actualDayNextMonth,
-                    targetHour,
-                    targetMinute,
-                    0);
-            }
-
-            return nextRunTime - nowInNamibia;
+            return nextRun - nowInNamibia;
         }
     }
 }

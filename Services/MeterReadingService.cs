@@ -19,10 +19,7 @@ namespace PaycBillingWorker.Services
             string serialNumber, int page, int pageSize)
         {
             var baseUrl = _config["ApiSettings:BaseUrl"] ?? "https://server.watermeter.payc.online";
-
-            var endpoint = $"/api/v1/mqttmeterReading/ByMeterSerialNumber/{serialNumber}";
-
-            // FIXED casing → pageSize
+            var endpoint = $"/api/v1/mqttmeterReading/ByMeterSerialNumber/{serialNumber.Trim()}";
             var fullUrl = $"{baseUrl}{endpoint}?page={page}&pageSize={pageSize}";
 
             return await _baseService.SendAsync<MeterReadingApiResponse>(new RequestDTO
