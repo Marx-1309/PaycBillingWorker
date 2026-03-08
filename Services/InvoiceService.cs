@@ -3,13 +3,14 @@ using Microsoft.Data.SqlClient;
 using System.Net.Http.Headers;
 using PaycBillingWorker.Models;
 using PaycBillingWorker.Models.DTO;
-using PaycBillingWorker.Interfaces; // Required for IBaseService
+using PaycBillingWorker.Interfaces; 
 
 namespace PaycBillingWorker.Services
 {
     public interface IInvoiceService
     {
         Task ProcessInvoicesAsync();
+        Task<ResponseDTO<ApiMessageResponse>> PostInvoiceToApi(InvoicePayload payload);
     }
 
     public class InvoiceService : IInvoiceService
@@ -18,14 +19,13 @@ namespace PaycBillingWorker.Services
         private readonly IConfiguration _config;
         private readonly HttpClient _httpClient;
 
-        // FIX: Change type from BaseService to IBaseService
         private readonly IBaseService _baseService;
 
         public InvoiceService(
             ILogger<InvoiceService> logger,
             IConfiguration config,
             HttpClient httpClient,
-            IBaseService baseService) // FIX: Inject interface here
+            IBaseService baseService) 
         {
             _logger = logger;
             _config = config;
@@ -217,34 +217,19 @@ namespace PaycBillingWorker.Services
             #endregion
         }
 
-        private async Task PostInvoiceToApi(InvoicePayload payload)
+        public async Task<ResponseDTO<ApiMessageResponse>> PostInvoiceToApi(InvoicePayload payload)
         {
-            try
-            {
-                var baseUrl = _config["ApiSettings:BaseUrl"];
-                var endpoint = _config["ApiSettings:InvoiceEndpoint"];
 
-                var response = await _baseService.SendAsync<ApiMessageResponse>(new RequestDTO
-                {
-                    Url = baseUrl + endpoint,
-                    Data = payload,
-                    ContentType = Utility.SD.ContentType.Json,
-                    ApiType = Utility.SD.ApiType.POST
-                });
+            var baseUrl = _config["ApiSettings:BaseUrl"];
+            var endpoint = _config["ApiSettings:InvoiceEndpoint"];
 
-                if (response != null && !response.IsSuccess)
-                {
-                    _logger.LogError($"API Error for Invoice {payload.InvoiceNo}: {response.Message}");
-                }
-                else
-                {
-                    _logger.LogInformation($"Successfully posted Invoice {payload.InvoiceNo}");
-                }
-            }
-            catch (Exception ex)
+            return await _baseService.SendAsync<ApiMessageResponse>(new RequestDTO
             {
-                _logger.LogError(ex, $"Failed to post invoice {payload.InvoiceNo}");
-            }
+                Url = baseUrl + endpoint,
+                Data = payload,
+                ContentType = Utility.SD.ContentType.Json,
+                ApiType = Utility.SD.ApiType.POST
+            });
         }
 
         #region Helpers

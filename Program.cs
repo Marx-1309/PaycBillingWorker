@@ -3,6 +3,7 @@ using PaycBillingWorker.Interfaces;
 using PaycBillingWorker.Repositories;
 using PaycBillingWorker.Services;
 using PaycBillingWorker.Workers;
+using Serilog;
 
 namespace PaycBillingWorker
 {
@@ -15,18 +16,27 @@ namespace PaycBillingWorker
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Host.CreateDefaultBuilder(args)
+
+                .UseSerilog((ctx, lc) =>
+                    lc.ReadFrom.Configuration(ctx.Configuration)
+                      .WriteTo.Console())
+
                 .ConfigureWebHostDefaults(webBuilder =>
                 {
-                    // vital: Ensures IIS integration catches exceptions and logs them
                     webBuilder.CaptureStartupErrors(true);
 
                     webBuilder.ConfigureServices(services =>
                     {
                         services.AddControllers();
                         services.AddEndpointsApiExplorer();
+
                         services.AddSwaggerGen(c =>
                         {
-                            c.SwaggerDoc("v1", new OpenApiInfo { Title = "PayC Billing API", Version = "v1" });
+                            c.SwaggerDoc("v1", new OpenApiInfo
+                            {
+                                Title = "PayC Billing API",
+                                Version = "v1"
+                            });
                         });
 
                         services.AddHttpContextAccessor();
@@ -37,6 +47,7 @@ namespace PaycBillingWorker
 
                         services.AddHostedService<PostInvoiceWorker>();
                         services.AddHostedService<UpdateMeterReadingWorker>();
+
                         services.AddHttpClient<IInvoiceService, InvoiceService>();
                         services.AddScoped<IMeterReadingService, MeterReadingService>();
                         services.AddScoped<IConsumerService, ConsumerService>();
@@ -47,21 +58,13 @@ namespace PaycBillingWorker
                     {
                         app.UseDeveloperExceptionPage();
 
-                        // FIX: Move Swagger OUTSIDE the IsDevelopment check
-                        // so it works in IIS (Production)
                         app.UseSwagger();
                         app.UseSwaggerUI(c =>
                         {
                             c.SwaggerEndpoint("/swagger/v1/swagger.json", "PayC Billing API v1");
-                            // Optional: Makes Swagger load at the root URL (localhost/)
-                            // c.RoutePrefix = string.Empty; 
                         });
 
-                        // Standard Middleware
                         app.UseRouting();
-
-                        // Add Authorization if you have it, otherwise endpoints might fail if they expect it
-                        // app.UseAuthorization(); 
 
                         app.UseEndpoints(endpoints =>
                         {
