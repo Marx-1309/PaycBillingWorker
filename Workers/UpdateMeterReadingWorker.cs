@@ -1,12 +1,11 @@
-﻿using System;
+﻿using Microsoft.Extensions.Options; // Required for IOptionsMonitor
+using PaycBillingWorker.Interfaces;
+using PaycBillingWorker.Models;
+using PaycBillingWorker.Repositories;
+using PaycBillingWorker.Services;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using PaycBillingWorker.Interfaces;
-using PaycBillingWorker.Repositories;
 
 namespace PaycBillingWorker.Workers
 {
@@ -14,17 +13,20 @@ namespace PaycBillingWorker.Workers
     {
         private readonly ILogger<UpdateMeterReadingWorker> _logger;
         private readonly IServiceScopeFactory _scopeFactory;
-        private readonly IConfiguration _config;
+        private readonly IOptionsMonitor<SchedulerSettings> _options; // Changed
         private readonly TimeZoneInfo _namibianTimeZone;
+        private readonly IWorkerHealthService _workerHealthService;
 
         public UpdateMeterReadingWorker(
             ILogger<UpdateMeterReadingWorker> logger,
             IServiceScopeFactory scopeFactory,
-            IConfiguration config)
+            IOptionsMonitor<SchedulerSettings> options, // Injected
+            IWorkerHealthService workerHealthService)
         {
             _logger = logger;
             _scopeFactory = scopeFactory;
-            _config = config;
+            _options = options;
+            _workerHealthService = workerHealthService;
 
             try
             {
@@ -41,39 +43,28 @@ namespace PaycBillingWorker.Workers
         {
             _logger.LogInformation("UpdateMeterReadingWorker Service started.");
 
-            if (_config.GetValue<bool>("MeterSchedulerSettings:RunOnStart"))
+            // Initial startup delay
+            await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+
+            // Fetch current settings for the start check
+            var currentSettings = _options.Get("MeterSchedulerSettings");
+
+            if (currentSettings.RunOnStart)
             {
                 _logger.LogInformation("RunOnStart TRUE. Running meter sync immediately.");
                 await RunJobAsync();
+                _workerHealthService.UpdateWorkerLastRun(nameof(UpdateMeterReadingWorker));
             }
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                int targetDay;
-                int targetHour;
-                int targetMinute;
+                // Pull FRESH settings from appsettings.json
+                var settings = _options.Get("MeterSchedulerSettings");
 
-                try
-                {
-                    targetDay = _config.GetValue<int>("MeterSchedulerSettings:RunOnDayOfMonth");
-                    targetHour = _config.GetValue<int>("MeterSchedulerSettings:RunAtHour");
-                    targetMinute = _config.GetValue<int>("MeterSchedulerSettings:RunAtMinute");
-
-                    if (targetDay < 1 || targetDay > 31)
-                    {
-                        _logger.LogCritical("Invalid MeterSchedulerSettings: RunOnDayOfMonth must be between 1 and 31.");
-                        await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
-                        continue;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to read MeterSchedulerSettings. Retrying in 1 hour.");
-                    await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
-                    continue;
-                }
-
-                TimeSpan delay = GetDelayUntilNextMonthlyRun(targetDay, targetHour, targetMinute);
+                TimeSpan delay = GetDelayUntilNextMonthlyRun(
+                    settings.RunOnDayOfMonth,
+                    settings.RunAtHour,
+                    settings.RunAtMinute);
 
                 DateTime estimatedRunTime = TimeZoneInfo
                     .ConvertTimeFromUtc(DateTime.UtcNow, _namibianTimeZone)
@@ -93,12 +84,14 @@ namespace PaycBillingWorker.Workers
                     break;
                 }
 
-                if (stoppingToken.IsCancellationRequested)
-                    break;
+                if (stoppingToken.IsCancellationRequested) break;
 
                 _logger.LogInformation("Running meter reading sync at {time}", DateTimeOffset.Now);
 
                 await RunJobAsync();
+
+                // Update health service specifically for THIS worker
+                _workerHealthService.UpdateWorkerLastRun(nameof(UpdateMeterReadingWorker));
 
                 await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
             }
@@ -125,11 +118,8 @@ namespace PaycBillingWorker.Workers
 
                         if (response?.Result?.MeterReading?.JsonMetadata != null)
                         {
-                            var reading = Convert.ToInt32(
-                                response.Result.MeterReading.JsonMetadata.Reading);
-
+                            var reading = Convert.ToInt32(response.Result.MeterReading.JsonMetadata.Reading);
                             await repository.UpdateCustomerReadingAsync(reading, serial.Trim());
-
                             _logger.LogInformation("Updated meter {serial} with reading {reading}", serial, reading);
                         }
                     }
@@ -165,14 +155,11 @@ namespace PaycBillingWorker.Workers
             if (nowInNamibia > nextRunTime)
             {
                 var nextMonth = nowInNamibia.AddMonths(1);
-
                 int daysInNextMonth = DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month);
-                int actualDayNextMonth = Math.Min(targetDay, daysInNextMonth);
-
                 nextRunTime = new DateTime(
                     nextMonth.Year,
                     nextMonth.Month,
-                    actualDayNextMonth,
+                    Math.Min(targetDay, daysInNextMonth),
                     targetHour,
                     targetMinute,
                     0);

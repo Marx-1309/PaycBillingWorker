@@ -1,8 +1,6 @@
-﻿using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Options; // Required for IOptionsMonitor
 using PaycBillingWorker.Interfaces;
+using PaycBillingWorker.Models;
 using PaycBillingWorker.Services;
 using System;
 using System.Threading;
@@ -14,17 +12,20 @@ namespace PaycBillingWorker.Workers
     {
         private readonly ILogger<PostInvoiceWorker> _logger;
         private readonly IServiceScopeFactory _scopeFactory;
-        private readonly IConfiguration _config;
+        private readonly IOptionsMonitor<SchedulerSettings> _options; // Changed
         private readonly TimeZoneInfo _namibianTimeZone;
+        private readonly IWorkerHealthService _workerHealthService;
 
         public PostInvoiceWorker(
             ILogger<PostInvoiceWorker> logger,
             IServiceScopeFactory scopeFactory,
-            IConfiguration config)
+            IOptionsMonitor<SchedulerSettings> options, // Injected
+            IWorkerHealthService workerHealthService)
         {
             _logger = logger;
             _scopeFactory = scopeFactory;
-            _config = config;
+            _options = options;
+            _workerHealthService = workerHealthService;
 
             try
             {
@@ -41,35 +42,30 @@ namespace PaycBillingWorker.Workers
         {
             _logger.LogInformation("PostInvoiceWorker Service started.");
 
-            if (_config.GetValue<bool>("InvoiceSchedulerSettings:RunOnStart"))
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
+            // Access latest settings for the 'RunOnStart' check
+            var currentSettings = _options.Get("InvoiceSchedulerSettings");
+
+            if (currentSettings.RunOnStart)
             {
                 _logger.LogInformation("RunOnStart TRUE. Running invoice job immediately.");
                 await RunJobAsync();
+                _workerHealthService.UpdateWorkerLastRun(nameof(PostInvoiceWorker));
             }
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                int targetDay;
-                int targetHour;
-                int targetMinute;
+                // Fetch FRESH settings from the file at the start of every loop iteration
+                var settings = _options.Get("InvoiceSchedulerSettings");
 
-                try
-                {
-                    targetDay = _config.GetValue<int>("InvoiceSchedulerSettings:RunOnDayOfMonth");
-                    targetHour = _config.GetValue<int>("InvoiceSchedulerSettings:RunAtHour");
-                    targetMinute = _config.GetValue<int>("InvoiceSchedulerSettings:RunAtMinute");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to read InvoiceSchedulerSettings. Retrying in 1 hour.");
-                    await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
-                    continue;
-                }
+                TimeSpan delay = GetDelayUntilNextRun(
+                    settings.RunOnDayOfMonth,
+                    settings.RunAtHour,
+                    settings.RunAtMinute);
 
-                TimeSpan delay = GetDelayUntilNextRun(targetDay, targetHour, targetMinute);
-
-                DateTime estimatedRunTime =
-                    TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _namibianTimeZone)
+                DateTime estimatedRunTime = TimeZoneInfo
+                    .ConvertTimeFromUtc(DateTime.UtcNow, _namibianTimeZone)
                     .Add(delay);
 
                 _logger.LogInformation(
@@ -78,25 +74,25 @@ namespace PaycBillingWorker.Workers
 
                 try
                 {
+                    // If you change appsettings during this delay, the worker will 
+                    // pick up the NEW values AFTER this current delay finishes.
                     await Task.Delay(delay, stoppingToken);
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogWarning("PostInvoiceWorker stopping during delay.");
                     break;
                 }
 
-                if (stoppingToken.IsCancellationRequested)
-                    break;
+                if (stoppingToken.IsCancellationRequested) break;
 
                 _logger.LogInformation("Running invoice posting at {time}", DateTimeOffset.Now);
 
                 await RunJobAsync();
+                _workerHealthService.UpdateWorkerLastRun(nameof(PostInvoiceWorker));
 
                 await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
             }
-
-            _logger.LogInformation("PostInvoiceWorker stopped.");
+            _logger.LogInformation("******************Skip To Run Job For Now******************");
         }
 
         private async Task RunJobAsync()
@@ -104,11 +100,8 @@ namespace PaycBillingWorker.Workers
             try
             {
                 using var scope = _scopeFactory.CreateScope();
-
                 var invoiceService = scope.ServiceProvider.GetRequiredService<IInvoiceService>();
-
                 await invoiceService.ProcessInvoicesAsync();
-
                 _logger.LogInformation("*****Invoice posting finished successfully.*****");
             }
             catch (Exception ex)
@@ -121,16 +114,18 @@ namespace PaycBillingWorker.Workers
         {
             var nowInNamibia = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _namibianTimeZone);
 
-            DateTime nextRun = new DateTime(
-                nowInNamibia.Year,
-                nowInNamibia.Month,
-                targetDay,
-                targetHour,
-                targetMinute,
-                0);
+            // Handle months where targetDay doesn't exist (e.g. Feb 30)
+            int daysInCurrentMonth = DateTime.DaysInMonth(nowInNamibia.Year, nowInNamibia.Month);
+            int actualDay = Math.Min(targetDay, daysInCurrentMonth);
+
+            DateTime nextRun = new DateTime(nowInNamibia.Year, nowInNamibia.Month, actualDay, targetHour, targetMinute, 0);
 
             if (nowInNamibia > nextRun)
-                nextRun = nextRun.AddMonths(1);
+            {
+                var nextMonth = nowInNamibia.AddMonths(1);
+                int daysInNextMonth = DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month);
+                nextRun = new DateTime(nextMonth.Year, nextMonth.Month, Math.Min(targetDay, daysInNextMonth), targetHour, targetMinute, 0);
+            }
 
             return nextRun - nowInNamibia;
         }

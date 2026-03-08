@@ -7,10 +7,12 @@ namespace PaycBillingWorker.Repositories
     {
         private readonly IConfiguration _config;
         private readonly string _connectionString;
+        private readonly ILogger<MeterReadingRepository> _logger;
 
-        public MeterReadingRepository(IConfiguration config)
+        public MeterReadingRepository(IConfiguration config, ILogger<MeterReadingRepository> logger)
         {
             _config = config;
+            _logger = logger;
             _connectionString = _config.GetConnectionString("DefaultConnection");
         }
 
@@ -18,22 +20,38 @@ namespace PaycBillingWorker.Repositories
         {
             var serialNumbers = new List<string>();
 
-            using (SqlConnection conn = new SqlConnection(_connectionString))
+            try
             {
-                using (SqlCommand cmd = new SqlCommand("aa_BS_GetCityTapCustomersSerialNumbers", conn))
+                _logger.LogInformation("Starting GetCustomerSerialNumbersAsync.");
+
+                using SqlConnection conn = new SqlConnection(_connectionString);
+                using SqlCommand cmd = new SqlCommand("aa_BS_GetCityTapCustomersSerialNumbers", conn)
                 {
-                    cmd.CommandType = CommandType.StoredProcedure;
+                    CommandType = CommandType.StoredProcedure
+                };
 
-                    await conn.OpenAsync();
+                await conn.OpenAsync();
+                _logger.LogInformation("Database connection opened successfully.");
 
-                    using (SqlDataReader reader = await cmd.ExecuteReaderAsync())
+                using SqlDataReader reader = await cmd.ExecuteReaderAsync();
+
+                while (await reader.ReadAsync())
+                {
+                    var serialNumber = reader["MeterSerialNumber"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(serialNumber))
                     {
-                        while (await reader.ReadAsync())
-                        {
-                            serialNumbers.Add(reader["MeterSerialNumber"].ToString());
-                        }
+                        serialNumbers.Add(serialNumber);
                     }
                 }
+
+                _logger.LogInformation("Fetched {Count} customer serial numbers.", serialNumbers.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Error occurred in GetCustomerSerialNumbersAsync. Message: {ErrorMessage}",
+                    ex.Message);
+                throw;
             }
 
             return serialNumbers;
@@ -41,18 +59,31 @@ namespace PaycBillingWorker.Repositories
 
         public async Task UpdateCustomerReadingAsync(int reading, string serialNumber)
         {
-            using (SqlConnection conn = new SqlConnection(_connectionString))
+            try
             {
-                using (SqlCommand cmd = new SqlCommand("aa_BS_UpdateCityTapsWaterReadings", conn))
+                _logger.LogInformation("Updating meter reading for SerialNumber: {SerialNumber} with Reading: {Reading}",
+                    serialNumber, reading);
+
+                using SqlConnection conn = new SqlConnection(_connectionString);
+                using SqlCommand cmd = new SqlCommand("aa_BS_UpdateCityTapsWaterReadings", conn)
                 {
-                    cmd.CommandType = CommandType.StoredProcedure;
+                    CommandType = CommandType.StoredProcedure
+                };
 
-                    cmd.Parameters.AddWithValue("@CurrentReading", reading);
-                    cmd.Parameters.AddWithValue("@CustomerSerialNo", serialNumber);
+                cmd.Parameters.AddWithValue("@CurrentReading", reading);
+                cmd.Parameters.AddWithValue("@CustomerSerialNo", serialNumber);
 
-                    await conn.OpenAsync();
-                    await cmd.ExecuteNonQueryAsync();
-                }
+                await conn.OpenAsync();
+                await cmd.ExecuteNonQueryAsync();
+
+                _logger.LogInformation("Successfully updated meter reading for SerialNumber: {SerialNumber}", serialNumber);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Error occurred while updating meter reading for SerialNumber: {SerialNumber}. Message: {ErrorMessage}",
+                    serialNumber, ex.Message);
+                throw;
             }
         }
     }
