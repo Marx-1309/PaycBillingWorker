@@ -1,9 +1,13 @@
 ﻿using Newtonsoft.Json;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PaycBillingWorker.Models
 {
     public class ConsumerPayload
     {
+        [JsonIgnore]
+        public string customerId { get; set; }
+
         [JsonProperty("name")]
         public string Name { get; set; }
 

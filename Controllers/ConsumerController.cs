@@ -31,7 +31,11 @@ namespace PaycBillingWorker.Controllers
             var response = await _consumerService.PostNewConsumerAsync(payload);
 
             if (response.IsSuccess)
-                return StatusCode(201, response.Result);
+                return StatusCode(201, new
+                {
+                    message = response.Result,
+                    customerId = response.CustomerId
+                });
 
             return BadRequest(new { message = response.Message });
         }

@@ -50,15 +50,17 @@ namespace PaycBillingWorker.Services
                 };
 
                 var apiResponse = await client.SendAsync(message);
-
                 var content = await apiResponse.Content.ReadAsStringAsync();
+
+                dynamic json = JsonConvert.DeserializeObject<dynamic>(content);
 
                 if (!apiResponse.IsSuccessStatusCode)
                 {
                     return new ResponseDTO<T>
                     {
                         IsSuccess = false,
-                        Message = $"Error {apiResponse.StatusCode}: {content}"
+                        Message = $"Error {apiResponse.StatusCode}: {content}",
+                        CustomerId = json?.customerId
                     };
                 }
 
@@ -68,7 +70,8 @@ namespace PaycBillingWorker.Services
                 {
                     Result = result,
                     IsSuccess = true,
-                    Message = "Success"
+                    Message = "Success",
+                    CustomerId = json?.customerId
                 };
             }
             catch (Exception ex)

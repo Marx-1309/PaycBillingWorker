@@ -37,7 +37,7 @@ namespace PaycBillingWorker.Services
 
             return await _baseService.SendAsync<ApiMessageResponse>(new RequestDTO
             {
-                Url = baseUrl + endpoint,
+                Url = baseUrl + endpoint + $"?{payload.customerId.ToString().Trim()}",
                 Data = payload,
                 ApiType = ApiType.PUT,
                 ContentType = ContentType.Json
